@@ -27,16 +27,19 @@ class SettingsWindowController {
         )
 
         let hostingView = NSHostingView(rootView: settingsView)
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
 
+        // Resizable, and tall enough to show the form without clipping. The
+        // form scrolls, so a short window stays usable; contentMinSize keeps it
+        // from being dragged down to nothing.
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 440, height: 600),
-            styleMask: [.titled, .closable],
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 620),
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "NextMeeting Settings"
         window.contentView = hostingView
+        window.contentMinSize = NSSize(width: 460, height: 400)
         window.center()
         window.isReleasedWhenClosed = false
         window.level = .floating

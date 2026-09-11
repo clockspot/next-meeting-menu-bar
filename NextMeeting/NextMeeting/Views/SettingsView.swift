@@ -7,137 +7,18 @@ struct SettingsView: View {
     var onDismiss: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Settings")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 12) {
-                // Lookahead Hours
-                HStack {
-                    Text("Lookahead Window:")
-                        .frame(width: 140, alignment: .leading)
-
-                    Picker("", selection: $preferencesService.lookaheadHours) {
-                        Text("12 hours").tag(12)
-                        Text("24 hours").tag(24)
-                        Text("48 hours").tag(48)
-                    }
-                    .pickerStyle(.menu)
-                    .frame(width: 140)
-                }
-
-                Text("How far ahead to show meetings")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.leading, 140)
-
-                // Refresh Interval
-                HStack {
-                    Text("Refresh Interval:")
-                        .frame(width: 140, alignment: .leading)
-
-                    Picker("", selection: $preferencesService.refreshIntervalSeconds) {
-                        Text("30 seconds").tag(30)
-                        Text("1 minute").tag(60)
-                        Text("5 minutes").tag(300)
-                    }
-                    .pickerStyle(.menu)
-                    .frame(width: 140)
-                }
-
-                Text("How often to check for meeting updates")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.leading, 140)
-
-                // Alert Timing
-                HStack {
-                    Text("Alert Timing:")
-                        .frame(width: 140, alignment: .leading)
-
-                    Picker("", selection: $preferencesService.alertMinutesBefore) {
-                        Text("At start").tag(0)
-                        Text("1 minute before").tag(1)
-                        Text("5 minutes before").tag(5)
-                    }
-                    .pickerStyle(.menu)
-                    .frame(width: 140)
-                }
-
-                Text("When to show full screen alerts")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.leading, 140)
-
-                // Keyboard Shortcut
-                HStack {
-                    Text("Keyboard Shortcut:")
-                        .frame(width: 140, alignment: .leading)
-
-                    Toggle("", isOn: $keyboardShortcutService.isEnabled)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-
-                    if keyboardShortcutService.isEnabled {
-                        Text(keyboardShortcutService.shortcutDisplayString)
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-
-                    Spacer()
-                }
-
-                Text("Press \(keyboardShortcutService.shortcutDisplayString) to join next meeting")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.leading, 140)
+        VStack(spacing: 0) {
+            // A grouped Form aligns every label and control on its own without
+            // hand-tuned padding, and scrolls when the content outgrows the
+            // window instead of running off the bottom edge.
+            Form {
+                meetingsSection
+                menuBarSection
+                alertsSection
+                shortcutSection
+                calendarsSection
             }
-
-            Divider()
-
-            // Calendar Selection
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Calendars")
-                    .font(.headline)
-
-                Text("Uncheck calendars to hide their meetings")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                let grouped = Dictionary(grouping: calendarService.availableCalendars) { $0.source }
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(grouped.keys.sorted(), id: \.self) { source in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(source)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .fontWeight(.semibold)
-
-                                ForEach(grouped[source] ?? []) { cal in
-                                    CalendarToggleRow(
-                                        calendar: cal,
-                                        isEnabled: !preferencesService.excludedCalendarIDs.contains(cal.id),
-                                        onToggle: { enabled in
-                                            if enabled {
-                                                preferencesService.excludedCalendarIDs.remove(cal.id)
-                                            } else {
-                                                preferencesService.excludedCalendarIDs.insert(cal.id)
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-                .frame(maxHeight: 200)
-            }
+            .formStyle(.grouped)
 
             Divider()
 
@@ -146,40 +27,120 @@ struct SettingsView: View {
                 Button("Done") {
                     onDismiss?()
                 }
-                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
             }
+            .padding(12)
         }
-        .padding(20)
-        .frame(width: 400)
+        .frame(minWidth: 460, minHeight: 400)
         .onAppear {
             calendarService.loadAvailableCalendars()
         }
     }
-}
 
-struct CalendarToggleRow: View {
-    let calendar: CalendarInfo
-    let isEnabled: Bool
-    let onToggle: (Bool) -> Void
+    private var meetingsSection: some View {
+        Section {
+            Picker("Lookahead window", selection: $preferencesService.lookaheadHours) {
+                Text("12 hours").tag(12)
+                Text("24 hours").tag(24)
+                Text("48 hours").tag(48)
+            }
 
-    var body: some View {
-        HStack(spacing: 8) {
-            Toggle("", isOn: Binding(
-                get: { isEnabled },
-                set: { onToggle($0) }
-            ))
-            .toggleStyle(.checkbox)
-            .controlSize(.small)
-
-            Circle()
-                .fill(calendar.color)
-                .frame(width: 8, height: 8)
-
-            Text(calendar.title)
-                .font(.system(size: 13))
-
-            Spacer()
+            Picker("Refresh interval", selection: $preferencesService.refreshIntervalSeconds) {
+                Text("30 seconds").tag(30)
+                Text("1 minute").tag(60)
+                Text("5 minutes").tag(300)
+            }
+        } header: {
+            Text("Meetings")
         }
-        .padding(.leading, 8)
+    }
+
+    private var menuBarSection: some View {
+        Section {
+            Picker("Countdown format", selection: $preferencesService.countdownFormat) {
+                ForEach(CountdownFormat.allCases) { format in
+                    Text(format.displayName).tag(format)
+                }
+            }
+
+            Toggle("Show calendar color", isOn: $preferencesService.showCalendarColor)
+
+            Toggle("Show \u{201C}No Meetings\u{201D} when the calendar is clear",
+                   isOn: $preferencesService.showNoMeetingsText)
+
+            Toggle("Hide event name on an external display",
+                   isOn: $preferencesService.hideEventTitleOnExternalDisplay)
+        } header: {
+            Text("Menu Bar")
+        }
+    }
+
+    private var alertsSection: some View {
+        Section {
+            Picker("Alert timing", selection: $preferencesService.alertMinutesBefore) {
+                Text("At start").tag(0)
+                Text("1 minute before").tag(1)
+                Text("5 minutes before").tag(5)
+            }
+        } header: {
+            Text("Alerts")
+        } footer: {
+            Text("When to show the full screen alert. Turn the alerts themselves on or off in the menu.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var shortcutSection: some View {
+        Section {
+            Toggle("Join the next meeting", isOn: $keyboardShortcutService.isEnabled)
+        } header: {
+            Text("Keyboard Shortcut")
+        } footer: {
+            Text("Press \(keyboardShortcutService.shortcutDisplayString) from any app. Requires Accessibility permission.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var calendarsSection: some View {
+        let grouped = Dictionary(grouping: calendarService.availableCalendars) { $0.source }
+
+        return Section {
+            ForEach(grouped.keys.sorted(), id: \.self) { source in
+                if grouped.keys.count > 1 {
+                    Text(source)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                }
+
+                ForEach(grouped[source] ?? []) { cal in
+                    Toggle(isOn: Binding(
+                        get: { !preferencesService.excludedCalendarIDs.contains(cal.id) },
+                        set: { enabled in
+                            if enabled {
+                                preferencesService.excludedCalendarIDs.remove(cal.id)
+                            } else {
+                                preferencesService.excludedCalendarIDs.insert(cal.id)
+                            }
+                        }
+                    )) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(cal.color)
+                                .frame(width: 8, height: 8)
+                            Text(cal.title)
+                        }
+                    }
+                }
+            }
+        } header: {
+            Text("Calendars")
+        } footer: {
+            Text("Turn a calendar off to leave its meetings out of the countdown and the list.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
     }
 }

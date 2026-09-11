@@ -35,6 +35,10 @@ Tests build with the Command Line Tools alone (no Xcode required): the pure logi
 |---------|---------|
 | Menu bar countdown | Live display: `15m: Team Standup` |
 | Global shortcut | **Cmd+Shift+J** joins current/next meeting from any app |
+| Hide event name | Menu toggle shows the countdown alone; optional auto-hide on an external display |
+| Countdown format | `2h 23m` or `2:23` |
+| Calendar color | Optional dot in the next meeting's calendar color |
+| Empty calendar | Optionally drop "No Meetings" and leave just the icon |
 | Full-screen alerts | Optional popup at start, 1min, or 5min before |
 | Calendar picker | Choose which calendars to show |
 | Launch at Login | Native macOS integration via SMAppService |

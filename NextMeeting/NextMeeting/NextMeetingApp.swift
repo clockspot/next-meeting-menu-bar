@@ -11,6 +11,7 @@ struct NextMeetingApp: App {
     @StateObject private var calendarService: CalendarService
     @StateObject private var launchAtLoginService: LaunchAtLoginService
     @StateObject private var keyboardShortcutService: KeyboardShortcutService
+    @StateObject private var displayMonitorService: DisplayMonitorService
     private let alertController = MeetingAlertWindowController()
 
     // Setup happens here rather than in the menu content's .onAppear: with the
@@ -22,11 +23,13 @@ struct NextMeetingApp: App {
         let calendar = CalendarService(preferencesService: preferences)
         let launchAtLogin = LaunchAtLoginService()
         let shortcut = KeyboardShortcutService()
+        let displayMonitor = DisplayMonitorService()
 
         _preferencesService = StateObject(wrappedValue: preferences)
         _calendarService = StateObject(wrappedValue: calendar)
         _launchAtLoginService = StateObject(wrappedValue: launchAtLogin)
         _keyboardShortcutService = StateObject(wrappedValue: shortcut)
+        _displayMonitorService = StateObject(wrappedValue: displayMonitor)
 
         shortcut.setup { [weak calendar] in
             guard let calendar else { return }
@@ -42,12 +45,30 @@ struct NextMeetingApp: App {
                 calendarService: calendarService,
                 launchAtLoginService: launchAtLoginService,
                 preferencesService: preferencesService,
-                keyboardShortcutService: keyboardShortcutService
+                keyboardShortcutService: keyboardShortcutService,
+                displayMonitorService: displayMonitorService
             )
         } label: {
-            HStack(spacing: 4) {
+            // MenuBarExtra draws only the first image and the first text of
+            // whatever it is handed, image first, so the label is always at
+            // most one of each. The countdown lives in the image because a
+            // Text one cannot get tabular digits. See MenuBarLabelImage.
+            if let label = menuBarLabel {
+                Image(nsImage: MenuBarLabelImage.image(
+                    text: label.countdown,
+                    color: label.color,
+                    trailingGap: label.eventName != nil
+                ))
+
+                if let eventName = label.eventName {
+                    Text(eventName)
+                }
+            } else {
                 Image(systemName: "calendar")
-                Text(menuBarTitle)
+
+                if let status = menuBarStatusText {
+                    Text(status)
+                }
             }
         }
         .menuBarExtraStyle(.window)
@@ -66,18 +87,57 @@ struct NextMeetingApp: App {
         }
     }
 
-    private var menuBarTitle: String {
+    /// Fall back to the in-progress meeting so the menu bar doesn't claim
+    /// "No Meetings" while your last meeting of the day is happening.
+    private var displayedMeeting: Meeting? {
+        calendarService.nextMeeting ?? calendarService.currentMeeting
+    }
+
+    private var hidesEventTitle: Bool {
+        preferencesService.shouldHideEventTitle(
+            hasExternalDisplay: displayMonitorService.hasExternalDisplay
+        )
+    }
+
+    /// What the label says when there is nothing to count down to, or nil to
+    /// leave the glyph standing on its own. Missing access always speaks up:
+    /// a silent glyph would look like an empty calendar rather than a prompt.
+    private var menuBarStatusText: String? {
         guard calendarService.hasAccess else {
             return "No Access"
         }
 
-        // Fall back to the in-progress meeting so the title doesn't claim
-        // "No Meetings" while your last meeting of the day is happening.
-        guard let meeting = calendarService.nextMeeting ?? calendarService.currentMeeting else {
-            return "No Meetings"
+        return preferencesService.showNoMeetingsText ? "No Meetings" : nil
+    }
+
+    private struct MenuBarLabel {
+        let countdown: String
+        let color: Color?
+        let eventName: String?
+    }
+
+    /// Nil when there is nothing to count down to, where the label falls back to
+    /// a plain glyph and status text.
+    private var menuBarLabel: MenuBarLabel? {
+        guard calendarService.hasAccess, let meeting = displayedMeeting else {
+            return nil
         }
 
-        return meeting.menuBarTitle(at: calendarService.now)
+        let showsName = !hidesEventTitle
+        // The dot stays even with the name hidden — the countdown alone still
+        // benefits from saying which calendar the meeting came from.
+        let color = preferencesService.showCalendarColor ? meeting.calendarColor : nil
+
+        return MenuBarLabel(
+            countdown: meeting.menuBarCountdown(
+                at: calendarService.now,
+                format: preferencesService.countdownFormat,
+                showTitle: showsName,
+                hasColorDot: color != nil
+            ),
+            color: color,
+            eventName: showsName ? meeting.menuBarEventName : nil
+        )
     }
 
     private func showAlert(for meeting: Meeting) {

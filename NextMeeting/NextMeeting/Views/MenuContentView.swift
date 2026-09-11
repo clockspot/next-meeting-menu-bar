@@ -5,6 +5,7 @@ struct MenuContentView: View {
     @ObservedObject var launchAtLoginService: LaunchAtLoginService
     @ObservedObject var preferencesService: PreferencesService
     @ObservedObject var keyboardShortcutService: KeyboardShortcutService
+    @ObservedObject var displayMonitorService: DisplayMonitorService
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -22,6 +23,9 @@ struct MenuContentView: View {
         }
         .padding(.vertical, 8)
         .frame(width: 300)
+        .onAppear {
+            calendarService.syncDisplayClock()
+        }
     }
 
     @ViewBuilder
@@ -39,7 +43,12 @@ struct MenuContentView: View {
                 .padding(.bottom, 4)
 
             ForEach(calendarService.meetings.prefix(5)) { meeting in
-                MeetingRowView(meeting: meeting, openURL: openURL)
+                MeetingRowView(
+                    meeting: meeting,
+                    now: calendarService.now,
+                    countdownFormat: preferencesService.countdownFormat,
+                    openURL: openURL
+                )
             }
         }
     }
@@ -65,8 +74,38 @@ struct MenuContentView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// True when the external-display rule is hiding the name on its own, so
+    /// the manual toggle reading "off" isn't confusing.
+    private var autoHidingForExternalDisplay: Bool {
+        !preferencesService.hideEventTitle
+            && preferencesService.hideEventTitleOnExternalDisplay
+            && displayMonitorService.hasExternalDisplay
+    }
+
     private var footerButtons: some View {
         VStack(spacing: 4) {
+            Toggle(isOn: $preferencesService.hideEventTitle) {
+                HStack {
+                    Image(systemName: preferencesService.hideEventTitle ? "eye.slash" : "eye")
+                    Text("Hide Event Name")
+                    Spacer()
+                }
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .help("Show only the countdown in the menu bar")
+
+            if autoHidingForExternalDisplay {
+                Text("Auto-hidden: external display connected. Open Settings to change this behavior.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 4)
+            }
+
             Toggle(isOn: $calendarService.fullScreenAlertsEnabled) {
                 HStack {
                     Image(systemName: "bell.badge")
@@ -148,6 +187,10 @@ struct MenuContentView: View {
 
 struct MeetingRowView: View {
     let meeting: Meeting
+    /// Rendering clock, shared with the menu bar label so the two can't
+    /// disagree; see CalendarService.now.
+    let now: Date
+    let countdownFormat: CountdownFormat
     let openURL: OpenURLAction
 
     var body: some View {
@@ -164,8 +207,8 @@ struct MeetingRowView: View {
                 HStack(spacing: 4) {
                     Text(meeting.timeString)
                     Text("•")
-                    Text(meeting.countdownString)
-                        .foregroundColor(meeting.isHappeningNow ? .green : .secondary)
+                    Text(meeting.relativeCountdownString(at: now, format: countdownFormat))
+                        .foregroundColor(meeting.isHappeningNow(at: now) ? .green : .secondary)
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)

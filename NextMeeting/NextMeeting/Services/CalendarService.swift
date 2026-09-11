@@ -23,8 +23,14 @@ class CalendarService: ObservableObject {
     @Published var hasAccess: Bool = false
     @Published var availableCalendars: [CalendarInfo] = []
 
-    /// Ticks every second while timers run; drives live countdown rendering.
+    /// Advances only when something rendered from it would actually change,
+    /// which is at most once a minute for a countdown. The display timer still
+    /// ticks every second underneath.
     @Published private(set) var now: Date = Date()
+
+    /// The rendering `now` was last published for, so an unchanged tick can be
+    /// dropped instead of republished.
+    private var lastDisplaySignature: String?
 
     /// Set on the display tick when a meeting enters its alert window.
     /// Evaluated every second (not on the slower fetch cadence) so the
@@ -116,7 +122,9 @@ class CalendarService: ObservableObject {
     }
 
     private func startDisplayTimer() {
-        guard displayTimer == nil else { return }
+        // isValid, not nil: a timer that was invalidated must be replaced, or
+        // the clock would never tick again for the life of the process.
+        guard displayTimer?.isValid != true else { return }
         let timer = Timer(timeInterval: 1, repeats: true) { _ in
             Task { @MainActor [weak self] in
                 self?.displayTick()
@@ -126,16 +134,54 @@ class CalendarService: ObservableObject {
         displayTimer = timer
     }
 
-    private func displayTick() {
-        now = Date()
+    /// Brings the display clock to the present and makes sure the tick is still
+    /// running.
+    ///
+    /// Views render the countdown from `now` rather than reading the clock
+    /// themselves, which keeps the menu bar and the dropdown in agreement but
+    /// also means a clock that fell behind stays visibly behind. The menu
+    /// content is only on screen while the menu is open, so opening it is both
+    /// when staleness would show and a free moment to recover.
+    func syncDisplayClock() {
+        let tick = Date()
 
+        lastDisplaySignature = Meeting.displaySignature(
+            for: meetings,
+            at: tick,
+            format: preferencesService.countdownFormat
+        )
+        now = tick
+
+        if hasAccess {
+            startDisplayTimer()
+        }
+    }
+
+    private func displayTick() {
+        let tick = Date()
+
+        // Republishing `now` every second rebuilds the MenuBarExtra label and
+        // relays out the status item, which nudges neighboring menu bar items
+        // even when the text is identical. Publish only on a real change.
+        let signature = Meeting.displaySignature(
+            for: meetings,
+            at: tick,
+            format: preferencesService.countdownFormat
+        )
+        if signature != lastDisplaySignature {
+            lastDisplaySignature = signature
+            now = tick
+        }
+
+        // Alerts are still evaluated against the raw tick every second, so a
+        // one-minute window can't be missed just because the text held steady.
         let candidate: Meeting?
         if fullScreenAlertsEnabled {
             candidate = MeetingAlertPolicy.meetingToAlert(
                 in: meetings,
                 alertedIDs: alertedMeetingIds,
                 alertMinutesBefore: preferencesService.alertMinutesBefore,
-                now: now
+                now: tick
             )
         } else {
             candidate = nil
